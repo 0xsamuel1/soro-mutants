@@ -1,11 +1,16 @@
-use std::{fs, process::Command, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    fs,
+    process::Command,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 fn unique_project() -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root = std::env::temp_dir().join(format!("soro-const-test-{}-{nonce}", std::process::id()));
+    let root =
+        std::env::temp_dir().join(format!("soro-const-test-{}-{nonce}", std::process::id()));
     fs::create_dir_all(root.join("src")).unwrap();
     root
 }
@@ -34,7 +39,10 @@ pub fn check_with_const(admin: Address) {
         .args(["list", root.to_str().unwrap(), "--json"])
         .output()
         .expect("CLI should run");
-    assert!(output.status.success(), "const block syntax must parse without error");
+    assert!(
+        output.status.success(),
+        "const block syntax must parse without error"
+    );
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     let mutants = report["mutants"].as_array().unwrap();
     // Only admin.require_auth() should be mutated; no false positives inside const block
