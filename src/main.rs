@@ -8,6 +8,7 @@ use proc_macro2::Span;
 use redaction::redact_environment_secrets;
 use serde::{Deserialize, Serialize};
 use std::{
+    collections::BTreeMap,
     env,
     ffi::OsString,
     fs,
@@ -407,6 +408,62 @@ struct MutantResult {
     outcome: Outcome,
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+struct OutcomeCounts {
+    generated: usize,
+    killed: usize,
+    survived: usize,
+    unviable: usize,
+    timeout: usize,
+}
+
+impl OutcomeCounts {
+    fn record(&mut self, outcome: Outcome) {
+        self.generated += 1;
+        match outcome {
+            Outcome::Killed => self.killed += 1,
+            Outcome::Survived => self.survived += 1,
+            Outcome::Unviable => self.unviable += 1,
+            Outcome::Timeout => self.timeout += 1,
+        }
+    }
+}
+
+fn summary_by_operator(results: &[MutantResult]) -> BTreeMap<String, OutcomeCounts> {
+    let mut summary: BTreeMap<String, OutcomeCounts> = BTreeMap::new();
+    for result in results {
+        summary
+            .entry(result.mutant.operator.clone())
+            .or_default()
+            .record(result.outcome.clone());
+    }
+    summary
+}
+
+fn summary_by_file(results: &[MutantResult]) -> BTreeMap<String, OutcomeCounts> {
+    let mut summary: BTreeMap<String, OutcomeCounts> = BTreeMap::new();
+    for result in results {
+        summary
+            .entry(result.mutant.file.to_string_lossy().replace('\\', "/"))
+            .or_default()
+            .record(result.outcome.clone());
+    }
+    summary
+}
+
+fn summary_by_function(results: &[MutantResult]) -> BTreeMap<String, OutcomeCounts> {
+    let mut summary: BTreeMap<String, OutcomeCounts> = BTreeMap::new();
+    for result in results {
+        if let Some(function) = result.mutant.function.as_ref() {
+            summary
+                .entry(function.clone())
+                .or_default()
+                .record(result.outcome.clone());
+        }
+    }
+    summary
+}
+
 const JSON_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Serialize)]
@@ -431,6 +488,9 @@ struct TestReport<'a> {
     metadata: Option<&'a RunMetadata>,
     #[serde(skip_serializing_if = "Option::is_none")]
     suppression: Option<SuppressionSummary<'a>>,
+    by_operator: BTreeMap<String, OutcomeCounts>,
+    by_file: BTreeMap<String, OutcomeCounts>,
+    by_function: BTreeMap<String, OutcomeCounts>,
 }
 
 #[derive(Debug, Serialize)]
@@ -1120,6 +1180,9 @@ fn test_report(results: &[MutantResult]) -> TestReport<'_> {
         results,
         metadata: None,
         suppression: None,
+        by_operator: summary_by_operator(results),
+        by_file: summary_by_file(results),
+        by_function: summary_by_function(results),
     }
 }
 
@@ -6231,9 +6294,13 @@ mod tests {
             let report = serde_json::to_value(test_report(&results)).unwrap();
             let example: serde_json::Value =
                 serde_json::from_str(include_str!("../docs/json-report-example.json")).unwrap();
-            let mut expected = example;
-            expected["results"][0]["outcome"] = label.into();
-            assert_eq!(report, expected);
+            let mut expected_results = example["results"].clone();
+            expected_results[0]["outcome"] = label.into();
+            assert_eq!(report["schema_version"], example["schema_version"]);
+            assert_eq!(report["results"], expected_results);
+            assert_eq!(report["by_operator"]["AUTH-001"]["generated"], 1);
+            assert_eq!(report["by_file"]["src/lib.rs"]["generated"], 1);
+            assert_eq!(report["by_function"]["guarded"]["generated"], 1);
         }
     }
 
@@ -6245,7 +6312,13 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(test_report(&[])).unwrap(),
-            serde_json::json!({"schema_version": 1, "results": []})
+            serde_json::json!({
+                "schema_version": 1,
+                "results": [],
+                "by_operator": {},
+                "by_file": {},
+                "by_function": {}
+            })
         );
     }
 

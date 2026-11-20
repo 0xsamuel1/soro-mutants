@@ -1,0 +1,22 @@
+name: Integration test determinism
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-cli:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run isolated concurrent CLI regression
+        run: cargo test --locked --test flaky_resistance_cli -- --nocapture
+      - name: Repeat regression without shared test threads
+        run: cargo test --locked --test flaky_resistance_cli -- --test-threads=1
