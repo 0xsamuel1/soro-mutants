@@ -1,0 +1,49 @@
+name: Minimum supported Rust version
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  msrv:
+    name: Rust 1.85.0 compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.85.0"
+      - name: Report toolchain
+        run: |
+          rustc --version
+          cargo --version
+      - name: Verify locked dependency resolution and compilation
+        run: cargo check --locked --all-targets --all-features
+      - name: Run platform policy regression tests
+        run: cargo test --locked --test check_platform_cli
+      - name: Verify declared MSRV on the runner
+        run: cargo run --locked -- check-platform --json
+
+  stable:
+    name: Current stable Rust compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Report toolchain
+        run: |
+          rustc --version
+          cargo --version
+      - name: Compile all targets and features
+        run: cargo check --locked --all-targets --all-features
+      - name: Run platform policy regression tests
+        run: cargo test --locked --test check_platform_cli
+      - name: Verify platform policy
+        run: cargo run --locked -- check-platform --json

@@ -3,8 +3,11 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 const ENV_NAME: &str = "SORO_MUTANTS_REGRESSION_SECRET";
 const SECRET: &str = "redaction-regression-secret-191-never-print";
@@ -17,8 +20,11 @@ impl TemporaryProject {
             .duration_since(UNIX_EPOCH)
             .expect("system clock")
             .as_nanos();
-        let root =
-            std::env::temp_dir().join(format!("soro-redaction-{}-{nonce}", std::process::id()));
+        let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "soro-redaction-{}-{nonce}-{sequence}",
+            std::process::id()
+        ));
         fs::create_dir_all(root.join("src")).expect("create isolated test project");
         fs::copy(
             Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/weak-auth/src/lib.rs"),
