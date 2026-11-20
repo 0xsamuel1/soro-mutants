@@ -124,6 +124,20 @@ jobs:
             "${{ matrix.expected }}" \
             "${{ matrix.function }}"
 
+  compile-viability:
+    name: compile-only mutation fixtures
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.91.0"
+      - name: Build CLI and compile-only test target
+        run: cargo test --locked --no-run --test compile_viability_fixtures
+      - name: Verify representative mutants reach the compile gate
+        run: cargo test --locked --test compile_viability_fixtures -- --ignored --test-threads=1
+
   dependency-audit:
     name: RustSec dependency audit
     runs-on: ubuntu-latest

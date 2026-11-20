@@ -1,5 +1,6 @@
 //! Versioned extension boundary for custom semantic operator prototypes.
 
+pub mod filters;
 pub mod parser;
 pub mod report;
 
