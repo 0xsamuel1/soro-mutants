@@ -53,9 +53,16 @@ fn zero_mutant_reports_across_all_formats() {
 
     // 6. GitHub step summary mode
     let temp_dir = std::env::temp_dir();
-    let summary_file = temp_dir.join(format!("soro-summary-test-{}", std::process::id()));
+    let summary_file = temp_dir.join(format!(
+        "soro-summary-test-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos()
+    ));
     let gh_summary_out = Command::new(env!("CARGO_BIN_EXE_cargo-soro-mutants"))
-        .args(&["test", target, "--operator", non_matching_op, "--github-summary"])
+        .args(["test", target, "--operator", non_matching_op, "--github-summary"])
         .env("GITHUB_STEP_SUMMARY", &summary_file)
         .output()
         .expect("CLI should run");
