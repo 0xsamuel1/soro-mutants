@@ -41,3 +41,54 @@ a report. JSON whitespace and object key ordering are not part of the contract.
 New operator IDs may be added without a schema bump; existing IDs must never be
 repurposed. Report values and the number of discovered mutants can change as
 recognizers improve without changing the schema.
+
+## Field nullability, optionality, and zero-value semantics
+
+To enable robust client-side deserialization, the following field guarantees apply to schema version 1:
+
+| Field | Location | Presence | Type | Semantics & Nullability |
+| --- | --- | --- | --- | --- |
+| `schema_version` | Root | Required | Integer | Always positive integer (`1`). Never `null` or omitted. |
+| `mutants` | `list --json` root | Required | Array | Array of mutant objects. Present and empty `[]` when no mutants are discovered; never `null` or omitted. |
+| `results` | `test --json` root | Required | Array | Array of test result objects. Present and empty `[]` when no mutants are tested; never `null` or omitted. |
+| `metadata` | `test --json` root | Present | Object | Present for all successful test runs (including zero-mutant runs). Excluded only when `--metadata false` is passed. |
+| `metadata.rustc_version` | `metadata` | Present | String or `null` | Non-empty string when `rustc --version` succeeds; `null` if the binary is missing or query fails. Never omitted. |
+| `metadata.cargo_version` | `metadata` | Present | String or `null` | Non-empty string when `cargo --version` succeeds; `null` if the binary is missing or query fails. Never omitted. |
+| `metadata.test_command` | `metadata` | Required | String | The exact test command configured. Never `null`. |
+| `metadata.compile_timeout_seconds` | `metadata` | Required | Integer | Non-negative effective compilation timeout in seconds. Never `null`. |
+| `metadata.test_timeout_seconds` | `metadata` | Required | Integer | Non-negative effective test execution timeout in seconds. Never `null`. |
+| `suppression` | `test --json` root | Optional | Object | Omitted / absent when no mutants are suppressed. Contains `count` (integer) and `details` (array) when present. |
+| `mutant.id` | Mutant object | Required | String | Non-empty deterministic identifier (e.g. `"M0001"`). Never `null`. |
+| `mutant.operator` | Mutant object | Required | String | Non-empty operator code (e.g. `"AUTH-001"`). Never `null`. |
+| `mutant.file` | Mutant object | Required | String | Project-relative file path using forward slashes. Never `null`. |
+| `mutant.function` | Mutant object | Required | String or `null` | Name of enclosing function if discovered; `null` if the mutant is at module or const scope. |
+| `mutant.span.line` | Mutant object | Required | Integer | 1-based start line. Never `null`. |
+| `mutant.span.column` | Mutant object | Required | Integer | 1-based start column. Never `null`. |
+| `mutant.original` | Mutant object | Required | String | Original source code snippet replaced. Never `null`. |
+| `mutant.replacement` | Mutant object | Required | String | Mutant replacement code snippet. Never `null`. |
+| `mutant.description` | Mutant object | Required | String | Human-readable explanation of the mutation. Never `null`. |
+| `outcome` | Result object | Required | String | Enum string: `"KILLED"`, `"SURVIVED"`, `"UNVIABLE"`, or `"TIMEOUT"`. Never `null`. |
+
+### Absence vs. Null vs. Empty Array vs. Zero
+- **Absent / Omitted**: Used exclusively for optional features that were not triggered (such as `suppression` when zero mutants were suppressed).
+- **`null`**: Used only when a property is semantically applicable but unresolvable (e.g., `function: null` for mutations outside function bodies, or toolchain versions when querying fails).
+- **Empty Array `[]`**: Used when a collection has zero elements (e.g., `mutants: []` or `results: []`). Collections are never serialized as `null`.
+- **Zero `0`**: Used for numeric quantities that are zero (e.g., zero timeouts or zero counts). Numeric fields are never serialized as `null`.
+
+### Concrete Example: Zero-Mutant Test Report
+
+When a test run matches no mutants, an empty results array is emitted with complete execution metadata:
+
+```json
+{
+  "schema_version": 1,
+  "results": [],
+  "metadata": {
+    "rustc_version": "rustc 1.85.0 (4d91de4e4 2025-02-17)",
+    "cargo_version": "cargo 1.85.0 (d49bee01b 2025-02-14)",
+    "test_command": "cargo test -q",
+    "compile_timeout_seconds": 60,
+    "test_timeout_seconds": 60
+  }
+}
+```
