@@ -1228,6 +1228,7 @@ struct FunctionState {
     current_function: Option<String>,
     lifecycle: Option<LifecycleKind>,
     address_params: Vec<String>,
+    address_vec_params: Vec<String>,
     token_client_vars: Vec<String>,
     contract_client_vars: Vec<String>,
     storage_accessor_vars: Vec<String>,
@@ -1251,6 +1252,7 @@ struct SemanticVisitor<'a> {
     current_function: Option<String>,
     lifecycle: Option<LifecycleKind>,
     address_params: Vec<String>,
+    address_vec_params: Vec<String>,
     token_client_vars: Vec<String>,
     contract_client_vars: Vec<String>,
     storage_accessor_vars: Vec<String>,
@@ -1275,6 +1277,7 @@ impl<'a> SemanticVisitor<'a> {
             current_function: None,
             lifecycle: None,
             address_params: Vec::new(),
+            address_vec_params: Vec::new(),
             token_client_vars: Vec::new(),
             contract_client_vars: Vec::new(),
             storage_accessor_vars: Vec::new(),
@@ -1315,6 +1318,10 @@ impl<'a> SemanticVisitor<'a> {
             }),
             lifecycle: std::mem::replace(&mut self.lifecycle, recognized_lifecycle(sig, body)),
             address_params: std::mem::replace(&mut self.address_params, address_params(sig)),
+            address_vec_params: std::mem::replace(
+                &mut self.address_vec_params,
+                address_vec_params(sig),
+            ),
             token_client_vars: std::mem::replace(
                 &mut self.token_client_vars,
                 token_client_params(sig),
@@ -1330,6 +1337,7 @@ impl<'a> SemanticVisitor<'a> {
         self.current_function = previous.current_function;
         self.lifecycle = previous.lifecycle;
         self.address_params = previous.address_params;
+        self.address_vec_params = previous.address_vec_params;
         self.token_client_vars = previous.token_client_vars;
         self.contract_client_vars = previous.contract_client_vars;
         self.storage_accessor_vars = previous.storage_accessor_vars;
@@ -1890,6 +1898,31 @@ impl<'ast> Visit<'ast> for SemanticVisitor<'_> {
         }
 
         visit::visit_local(self, node);
+    }
+
+    fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
+        let old_len = self.address_params.len();
+        let loop_binding = match (node.pat.as_ref(), node.expr.as_ref()) {
+            (Pat::Ident(binding), Expr::MethodCall(call))
+                if call.method == "iter" && call.args.is_empty() =>
+            {
+                receiver_ident(&call.receiver).and_then(|receiver| {
+                    self.address_vec_params
+                        .iter()
+                        .any(|candidate| candidate == &receiver)
+                        .then(|| binding.ident.to_string())
+                })
+            }
+            _ => None,
+        };
+        if let Some(binding) = loop_binding {
+            if !self.address_params.contains(&binding) {
+                self.address_params.push(binding);
+            }
+        }
+
+        visit::visit_expr_for_loop(self, node);
+        self.address_params.truncate(old_len);
     }
 
     fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
@@ -4725,6 +4758,42 @@ fn type_display_name(ty: &Type) -> String {
             .join("::"),
         Type::Reference(reference) => type_display_name(&reference.elem),
         _ => "impl".to_owned(),
+    }
+}
+
+fn address_vec_params(sig: &Signature) -> Vec<String> {
+    sig.inputs
+        .iter()
+        .filter_map(|input| match input {
+            FnArg::Typed(pat_type) if type_is_vec_of_address(&pat_type.ty) => {
+                match pat_type.pat.as_ref() {
+                    Pat::Ident(ident) => Some(ident.ident.to_string()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn type_is_vec_of_address(ty: &Type) -> bool {
+    match ty {
+        Type::Path(path) => {
+            let Some(segment) = path.path.segments.last() else {
+                return false;
+            };
+            if segment.ident != "Vec" {
+                return false;
+            }
+            let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+                return false;
+            };
+            arguments.args.iter().any(|argument| {
+                matches!(argument, syn::GenericArgument::Type(inner) if type_is_address(inner))
+            })
+        }
+        Type::Reference(reference) => type_is_vec_of_address(&reference.elem),
+        _ => false,
     }
 }
 
