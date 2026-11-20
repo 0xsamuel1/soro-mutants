@@ -13,7 +13,7 @@ Internal byte offsets are not serialized.
 `mutant` with those same fields and `outcome`, one of `KILLED`, `SURVIVED`,
 `UNVIABLE`, or `TIMEOUT`. See the [illustrative legacy report](json-report-example.json).
 The additional `metadata` object records `rustc_version` and `cargo_version` (strings,
-or null when unavailable), `test_command` (the exact configured command),
+or null when unavailable), `test_command` (the configured command after environment-secret redaction),
 `compile_timeout_seconds`, and `test_timeout_seconds` (the effective budgets after
 legacy `--timeout` fallback). The metadata is also present for successful runs
 with no matching mutants. Empty successful reports retain an empty results array.
@@ -51,10 +51,10 @@ To enable robust client-side deserialization, the following field guarantees app
 | `schema_version` | Root | Required | Integer | Always positive integer (`1`). Never `null` or omitted. |
 | `mutants` | `list --json` root | Required | Array | Array of mutant objects. Present and empty `[]` when no mutants are discovered; never `null` or omitted. |
 | `results` | `test --json` root | Required | Array | Array of test result objects. Present and empty `[]` when no mutants are tested; never `null` or omitted. |
-| `metadata` | `test --json` root | Present | Object | Present for all successful test runs (including zero-mutant runs). Excluded only when `--metadata false` is passed. |
+| `metadata` | `test --json` root | Required | Object | Present for all successful test runs, including zero-mutant runs. |
 | `metadata.rustc_version` | `metadata` | Present | String or `null` | Non-empty string when `rustc --version` succeeds; `null` if the binary is missing or query fails. Never omitted. |
 | `metadata.cargo_version` | `metadata` | Present | String or `null` | Non-empty string when `cargo --version` succeeds; `null` if the binary is missing or query fails. Never omitted. |
-| `metadata.test_command` | `metadata` | Required | String | The exact test command configured. Never `null`. |
+| `metadata.test_command` | `metadata` | Required | String | Configured test command after environment-secret redaction. Never `null`. |
 | `metadata.compile_timeout_seconds` | `metadata` | Required | Integer | Non-negative effective compilation timeout in seconds. Never `null`. |
 | `metadata.test_timeout_seconds` | `metadata` | Required | Integer | Non-negative effective test execution timeout in seconds. Never `null`. |
 | `suppression` | `test --json` root | Optional | Object | Omitted / absent when no mutants are suppressed. Contains `count` (integer) and `details` (array) when present. |
