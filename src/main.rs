@@ -1260,6 +1260,7 @@ struct SemanticVisitor<'a> {
     typed_event_topic_fields: std::collections::HashMap<String, std::collections::HashSet<String>>,
     auth_helpers: std::collections::HashMap<String, AuthHelper>,
     module_depth: usize,
+    module_path: Vec<String>,
     local_bindings: std::collections::HashSet<String>,
     mutants: Vec<Mutant>,
 }
@@ -1281,6 +1282,7 @@ impl<'a> SemanticVisitor<'a> {
             typed_event_topic_fields: std::collections::HashMap::new(),
             auth_helpers: std::collections::HashMap::new(),
             module_depth: 0,
+            module_path: Vec::new(),
             local_bindings: std::collections::HashSet::new(),
             mutants: Vec::new(),
         }
@@ -1291,7 +1293,14 @@ impl<'a> SemanticVisitor<'a> {
         bindings.visit_block(body);
         FunctionState {
             local_bindings: std::mem::replace(&mut self.local_bindings, bindings.0),
-            current_function: self.current_function.replace(sig.ident.to_string()),
+            current_function: self.current_function.replace({
+                let name = sig.ident.to_string();
+                if self.module_path.is_empty() {
+                    name
+                } else {
+                    format!("{}::{name}", self.module_path.join("::"))
+                }
+            }),
             lifecycle: std::mem::replace(&mut self.lifecycle, recognized_lifecycle(sig, body)),
             address_params: std::mem::replace(&mut self.address_params, address_params(sig)),
             token_client_vars: std::mem::replace(
@@ -1701,7 +1710,14 @@ impl<'ast> Visit<'ast> for SemanticVisitor<'_> {
 
     fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
         self.module_depth += 1;
+        let is_inline = node.content.is_some();
+        if is_inline {
+            self.module_path.push(node.ident.to_string());
+        }
         visit::visit_item_mod(self, node);
+        if is_inline {
+            self.module_path.pop();
+        }
         self.module_depth -= 1;
     }
 
@@ -4009,6 +4025,10 @@ fn normalized_args() -> Vec<OsString> {
     args
 }
 
+fn function_name_matches(qualified: &str, requested: &str) -> bool {
+    qualified == requested || qualified.rsplit("::").next() == Some(requested)
+}
+
 fn filter_changed_mutants(
     root: &Path,
     mutants: Vec<Mutant>,
@@ -4155,7 +4175,9 @@ fn filter_changed_mutants(
                     return true;
                 };
                 functions.iter().any(|(function, from, to)| {
-                    function == name && *from <= mutant.span.line && mutant.span.line <= *to
+                    function_name_matches(name, function)
+                        && *from <= mutant.span.line
+                        && mutant.span.line <= *to
                 })
             }
         }
@@ -4473,7 +4495,11 @@ fn discover_mutants_with_suppressions(
         });
     }
     if let Some(function_filter) = function_filter {
-        mutants.retain(|m| m.function.as_deref() == Some(function_filter));
+        mutants.retain(|m| {
+            m.function
+                .as_deref()
+                .is_some_and(|name| function_name_matches(name, function_filter))
+        });
     }
 
     let (mut mutants, suppressed) = suppress_equivalent_mutants(mutants);
