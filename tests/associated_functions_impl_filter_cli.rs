@@ -1,11 +1,16 @@
-use std::{fs, process::Command, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    fs,
+    process::Command,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 fn unique_project() -> std::path::PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root = std::env::temp_dir().join(format!("soro-assoc-test-{}-{nonce}", std::process::id()));
+    let root =
+        std::env::temp_dir().join(format!("soro-assoc-test-{}-{nonce}", std::process::id()));
     fs::create_dir_all(root.join("src")).unwrap();
     root
 }
@@ -34,7 +39,13 @@ impl Vault {
 
     // 1. Filter associated function `new_vault`
     let assoc_out = Command::new(env!("CARGO_BIN_EXE_cargo-soro-mutants"))
-        .args(["list", root.to_str().unwrap(), "--function", "new_vault", "--json"])
+        .args([
+            "list",
+            root.to_str().unwrap(),
+            "--function",
+            "new_vault",
+            "--json",
+        ])
         .output()
         .expect("CLI should run");
     assert!(assoc_out.status.success());
@@ -45,7 +56,13 @@ impl Vault {
 
     // 2. Filter method `deposit`
     let method_out = Command::new(env!("CARGO_BIN_EXE_cargo-soro-mutants"))
-        .args(["list", root.to_str().unwrap(), "--function", "deposit", "--json"])
+        .args([
+            "list",
+            root.to_str().unwrap(),
+            "--function",
+            "deposit",
+            "--json",
+        ])
         .output()
         .expect("CLI should run");
     assert!(method_out.status.success());
