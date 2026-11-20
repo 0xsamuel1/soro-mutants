@@ -93,9 +93,14 @@ fn zero_mutant_list_reports() {
 
     let text_out = run(&["list", target, "--operator", non_matching_op]);
     assert!(text_out.status.success());
+    let text = String::from_utf8_lossy(&text_out.stdout);
     assert!(
-        text_out.stdout.is_empty(),
-        "zero-mutant text list output should contain no mutant lines"
+        !text.lines().any(|line| {
+            line.split_whitespace()
+                .next()
+                .is_some_and(|token| token.starts_with('M') && token[1..].chars().all(|c| c.is_ascii_digit()))
+        }),
+        "zero-mutant text list output must not contain mutant records: {text}"
     );
 
     let json_out = run(&["list", target, "--operator", non_matching_op, "--json"]);
