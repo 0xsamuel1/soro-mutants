@@ -16,6 +16,10 @@ Patterns are project-root-relative and exclusions win over includes. Files that 
 
 `--function` applies to functions declared in `impl` blocks as well as free functions. A leaf-name filter such as `--function deposit` remains supported. When report metadata is qualified to disambiguate an impl or module, the corresponding qualified name may also be used.
 
+## Async functions
+
+Supported Soroban semantics inside async fn bodies are discovered the same way as in synchronous functions. The async qualifier itself is never mutated. Function metadata and filters continue to use the function name (or its qualified module/impl name), and deterministic operator ordering is preserved.
+
 ## Const blocks
 
 Stable Rust `const { ... }` blocks are parsed without inventing Soroban semantic types for ordinary compile-time expressions. Supported calls outside the const block remain discoverable; unrelated expressions inside the block do not create semantic mutants.

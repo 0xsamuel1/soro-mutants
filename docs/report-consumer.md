@@ -44,6 +44,8 @@ the denominator. The score is `100 × killed / viable`, with 0% when there are
 no viable results. For shards, combine counts from all successful reports
 before dividing.
 
+Human-readable Markdown and HTML reports display the percentage to exactly one decimal place using Rust standard floating-point formatting (for example, 33.3% and 66.7%). Threshold evaluation uses the unrounded percentage, so display rounding never changes pass/fail behavior. Machine-readable JSON reports expose the underlying outcome counts; consumers should reproduce the score from those counts rather than parsing the displayed text.
+
 ```bash
 jq '
   if .schema_version != 1 or (.results | type) != "array"
