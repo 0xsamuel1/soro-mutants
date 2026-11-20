@@ -9,8 +9,7 @@ fn unique_project() -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root =
-        std::env::temp_dir().join(format!("soro-gen-test-{}-{nonce}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("soro-gen-test-{}-{nonce}", std::process::id()));
     fs::create_dir_all(root.join("src")).unwrap();
     fs::create_dir_all(root.join("generated")).unwrap();
     root
@@ -55,7 +54,7 @@ fn skips_generated_rust_files_via_configurable_patterns() {
             "--exclude-path",
             "generated/**",
             "--exclude-path",
-            "*_generated.rs",
+            "**/*_generated.rs",
             "--json",
         ])
         .output()
