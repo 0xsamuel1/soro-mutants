@@ -147,7 +147,7 @@ pub fn escape_html(input: &str) -> String {
             '<' => escaped.push_str("&lt;"),
             '>' => escaped.push_str("&gt;"),
             '"' => escaped.push_str("&quot;"),
-            '\\'' => escaped.push_str("&#39;"),
+            '\'' => escaped.push_str("&#39;"),
             _ => escaped.push(ch),
         }
     }
@@ -156,7 +156,7 @@ pub fn escape_html(input: &str) -> String {
 
 pub fn escape_markdown_table_cell(input: &str) -> String {
     input
-        .replace('|', "\\\\|")
+        .replace('|', "\\|")
         .replace('\n', " ")
         .replace('\r', "")
 }
