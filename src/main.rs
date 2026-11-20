@@ -1261,6 +1261,8 @@ struct SemanticVisitor<'a> {
     auth_helpers: std::collections::HashMap<String, AuthHelper>,
     module_depth: usize,
     module_path: Vec<String>,
+    impl_type: Option<String>,
+    impl_method_collisions: std::collections::HashSet<String>,
     local_bindings: std::collections::HashSet<String>,
     mutants: Vec<Mutant>,
 }
@@ -1283,6 +1285,8 @@ impl<'a> SemanticVisitor<'a> {
             auth_helpers: std::collections::HashMap::new(),
             module_depth: 0,
             module_path: Vec::new(),
+            impl_type: None,
+            impl_method_collisions: std::collections::HashSet::new(),
             local_bindings: std::collections::HashSet::new(),
             mutants: Vec::new(),
         }
@@ -1295,11 +1299,19 @@ impl<'a> SemanticVisitor<'a> {
             local_bindings: std::mem::replace(&mut self.local_bindings, bindings.0),
             current_function: self.current_function.replace({
                 let name = sig.ident.to_string();
-                if self.module_path.is_empty() {
-                    name
+                let mut parts = self.module_path.clone();
+                let collision_key = if parts.is_empty() {
+                    name.clone()
                 } else {
-                    format!("{}::{name}", self.module_path.join("::"))
+                    format!("{}::{name}", parts.join("::"))
+                };
+                if self.impl_method_collisions.contains(&collision_key) {
+                    if let Some(impl_type) = &self.impl_type {
+                        parts.push(impl_type.clone());
+                    }
                 }
+                parts.push(name);
+                parts.join("::")
             }),
             lifecycle: std::mem::replace(&mut self.lifecycle, recognized_lifecycle(sig, body)),
             address_params: std::mem::replace(&mut self.address_params, address_params(sig)),
@@ -1648,6 +1660,7 @@ fn stored_authority_lookup(expr: &Expr, env_params: &[String]) -> Option<bool> {
 
 impl<'ast> Visit<'ast> for SemanticVisitor<'_> {
     fn visit_file(&mut self, node: &'ast syn::File) {
+        self.impl_method_collisions = impl_method_collisions(node);
         self.typed_event_structs = node
             .items
             .iter()
@@ -1844,6 +1857,12 @@ impl<'ast> Visit<'ast> for SemanticVisitor<'_> {
         self.push_stored_authority_mutants(&node.block);
         visit::visit_item_fn(self, node);
         self.leave_signature(previous);
+    }
+
+    fn visit_item_impl(&mut self, node: &'ast syn::ItemImpl) {
+        let previous = self.impl_type.replace(type_display_name(&node.self_ty));
+        visit::visit_item_impl(self, node);
+        self.impl_type = previous;
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
@@ -4652,6 +4671,61 @@ fn address_params(sig: &Signature) -> Vec<String> {
             _ => None,
         })
         .collect()
+}
+
+fn impl_method_collisions(file: &syn::File) -> std::collections::HashSet<String> {
+    fn visit_items(
+        items: &[syn::Item],
+        module_path: &mut Vec<String>,
+        counts: &mut std::collections::HashMap<String, usize>,
+    ) {
+        for item in items {
+            match item {
+                syn::Item::Impl(item_impl) => {
+                    for impl_item in &item_impl.items {
+                        if let syn::ImplItem::Fn(function) = impl_item {
+                            let name = function.sig.ident.to_string();
+                            let key = if module_path.is_empty() {
+                                name
+                            } else {
+                                format!("{}::{name}", module_path.join("::"))
+                            };
+                            *counts.entry(key).or_default() += 1;
+                        }
+                    }
+                }
+                syn::Item::Mod(item_mod) => {
+                    if let Some((_, items)) = &item_mod.content {
+                        module_path.push(item_mod.ident.to_string());
+                        visit_items(items, module_path, counts);
+                        module_path.pop();
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut counts = std::collections::HashMap::new();
+    visit_items(&file.items, &mut Vec::new(), &mut counts);
+    counts
+        .into_iter()
+        .filter_map(|(name, count)| (count > 1).then_some(name))
+        .collect()
+}
+
+fn type_display_name(ty: &Type) -> String {
+    match ty {
+        Type::Path(path) => path
+            .path
+            .segments
+            .iter()
+            .map(|segment| segment.ident.to_string())
+            .collect::<Vec<_>>()
+            .join("::"),
+        Type::Reference(reference) => type_display_name(&reference.elem),
+        _ => "impl".to_owned(),
+    }
 }
 
 fn type_is_address(ty: &Type) -> bool {
