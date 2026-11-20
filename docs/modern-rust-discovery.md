@@ -7,7 +7,7 @@ Soro Mutants keeps source discovery conservative while supporting modern stable 
 Generated Rust is not skipped implicitly. Use repeatable `--exclude-path` globs when generated sources should be outside the mutation surface:
 
 ```text
-cargo soro-mutants list . --exclude-path 'generated/**' --exclude-path '*_generated.rs'
+cargo soro-mutants list . --exclude-path 'generated/**' --exclude-path '**/*_generated.rs'
 ```
 
 Patterns are project-root-relative and exclusions win over includes. Files that do not match an exclusion remain eligible for normal discovery.
