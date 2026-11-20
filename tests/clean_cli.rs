@@ -45,7 +45,12 @@ fn stdout(output: &Output) -> String {
         "clean failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    String::from_utf8(output.stdout.clone()).unwrap()
+    let text = String::from_utf8(output.stdout.clone()).unwrap();
+    if cfg!(target_os = "macos") {
+        text.replace("/private/var/", "/var/")
+    } else {
+        text
+    }
 }
 
 #[test]
