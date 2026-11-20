@@ -81,7 +81,7 @@ impl OutcomeCounts {
 }
 
 pub fn summary_by_operator(results: &[ReportResult]) -> BTreeMap<String, OutcomeCounts> {
-    let mut map = BTreeMap::new();
+    let mut map: BTreeMap<String, OutcomeCounts> = BTreeMap::new();
     for r in results {
         map.entry(r.mutant.operator.clone())
             .or_default()
@@ -91,7 +91,7 @@ pub fn summary_by_operator(results: &[ReportResult]) -> BTreeMap<String, Outcome
 }
 
 pub fn summary_by_file(results: &[ReportResult]) -> BTreeMap<String, OutcomeCounts> {
-    let mut map = BTreeMap::new();
+    let mut map: BTreeMap<String, OutcomeCounts> = BTreeMap::new();
     for r in results {
         map.entry(r.mutant.file.clone())
             .or_default()
@@ -101,7 +101,7 @@ pub fn summary_by_file(results: &[ReportResult]) -> BTreeMap<String, OutcomeCoun
 }
 
 pub fn summary_by_function(results: &[ReportResult]) -> BTreeMap<String, OutcomeCounts> {
-    let mut map = BTreeMap::new();
+    let mut map: BTreeMap<String, OutcomeCounts> = BTreeMap::new();
     for r in results {
         if let Some(ref func) = r.mutant.function {
             map.entry(func.clone()).or_default().record(r.outcome);
