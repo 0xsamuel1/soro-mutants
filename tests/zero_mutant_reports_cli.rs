@@ -49,7 +49,13 @@ fn zero_mutant_reports_across_all_formats() {
     let sarif: serde_json::Value = serde_json::from_slice(&sarif_out.stdout).unwrap();
     assert_eq!(sarif["version"], "2.1.0");
     assert_eq!(sarif["runs"][0]["results"].as_array().unwrap().len(), 0);
-    assert_eq!(sarif["runs"][0]["tool"]["driver"]["rules"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        sarif["runs"][0]["tool"]["driver"]["rules"]
+            .as_array()
+            .unwrap()
+            .len(),
+        0
+    );
 
     // 6. GitHub step summary mode
     let temp_dir = std::env::temp_dir();
@@ -62,12 +68,19 @@ fn zero_mutant_reports_across_all_formats() {
             .as_nanos()
     ));
     let gh_summary_out = Command::new(env!("CARGO_BIN_EXE_cargo-soro-mutants"))
-        .args(["test", target, "--operator", non_matching_op, "--github-summary"])
+        .args([
+            "test",
+            target,
+            "--operator",
+            non_matching_op,
+            "--github-summary",
+        ])
         .env("GITHUB_STEP_SUMMARY", &summary_file)
         .output()
         .expect("CLI should run");
     assert!(gh_summary_out.status.success());
-    let summary_content = fs::read_to_string(&summary_file).expect("summary file should be written");
+    let summary_content =
+        fs::read_to_string(&summary_file).expect("summary file should be written");
     let _ = fs::remove_file(&summary_file);
     assert!(summary_content.contains("# Soro Mutants Report"));
     assert!(summary_content.contains("Semantic score: 0.0%"));
@@ -80,7 +93,8 @@ fn zero_mutant_list_reports() {
 
     let text_out = run(&["list", target, "--operator", non_matching_op]);
     assert!(text_out.status.success());
-    assert!(String::from_utf8_lossy(&text_out.stdout).contains("No matching Soroban semantic mutants found."));
+    assert!(String::from_utf8_lossy(&text_out.stdout)
+        .contains("No matching Soroban semantic mutants found."));
 
     let json_out = run(&["list", target, "--operator", non_matching_op, "--json"]);
     assert!(json_out.status.success());
