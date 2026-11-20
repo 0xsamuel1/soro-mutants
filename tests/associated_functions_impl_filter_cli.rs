@@ -9,8 +9,7 @@ fn unique_project() -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root =
-        std::env::temp_dir().join(format!("soro-assoc-test-{}-{nonce}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("soro-assoc-test-{}-{nonce}", std::process::id()));
     fs::create_dir_all(root.join("src")).unwrap();
     root
 }
