@@ -59,12 +59,71 @@ pub struct ReportMetadata {
     pub test_timeout_seconds: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct OutcomeCounts {
+    pub generated: usize,
+    pub killed: usize,
+    pub survived: usize,
+    pub unviable: usize,
+    pub timeout: usize,
+}
+
+impl OutcomeCounts {
+    pub fn record(&mut self, outcome: ReportOutcome) {
+        self.generated += 1;
+        match outcome {
+            ReportOutcome::Killed => self.killed += 1,
+            ReportOutcome::Survived => self.survived += 1,
+            ReportOutcome::Unviable => self.unviable += 1,
+            ReportOutcome::Timeout => self.timeout += 1,
+        }
+    }
+}
+
+pub fn summary_by_operator(results: &[ReportResult]) -> BTreeMap<String, OutcomeCounts> {
+    let mut map = BTreeMap::new();
+    for r in results {
+        map.entry(r.mutant.operator.clone())
+            .or_default()
+            .record(r.outcome);
+    }
+    map
+}
+
+pub fn summary_by_file(results: &[ReportResult]) -> BTreeMap<String, OutcomeCounts> {
+    let mut map = BTreeMap::new();
+    for r in results {
+        map.entry(r.mutant.file.clone())
+            .or_default()
+            .record(r.outcome);
+    }
+    map
+}
+
+pub fn summary_by_function(results: &[ReportResult]) -> BTreeMap<String, OutcomeCounts> {
+    let mut map = BTreeMap::new();
+    for r in results {
+        if let Some(ref func) = r.mutant.function {
+            map.entry(func.clone())
+                .or_default()
+                .record(r.outcome);
+        }
+    }
+    map
+}
+
 #[derive(Serialize)]
 pub struct JsonTestReport<'a> {
     pub schema_version: u32,
     pub results: &'a [ReportResult],
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metadata: Option<&'a ReportMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_operator: Option<BTreeMap<String, OutcomeCounts>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_file: Option<BTreeMap<String, OutcomeCounts>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub by_function: Option<BTreeMap<String, OutcomeCounts>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -72,6 +131,12 @@ pub struct DeJsonTestReport {
     pub schema_version: u32,
     pub results: Vec<ReportResult>,
     pub metadata: Option<ReportMetadata>,
+    #[serde(default)]
+    pub by_operator: Option<BTreeMap<String, OutcomeCounts>>,
+    #[serde(default)]
+    pub by_file: Option<BTreeMap<String, OutcomeCounts>>,
+    #[serde(default)]
+    pub by_function: Option<BTreeMap<String, OutcomeCounts>>,
 }
 
 pub fn escape_html(input: &str) -> String {
@@ -82,7 +147,7 @@ pub fn escape_html(input: &str) -> String {
             '<' => escaped.push_str("&lt;"),
             '>' => escaped.push_str("&gt;"),
             '"' => escaped.push_str("&quot;"),
-            '\'' => escaped.push_str("&#39;"),
+            ''' => escaped.push_str("&#39;"),
             _ => escaped.push(ch),
         }
     }
@@ -91,7 +156,7 @@ pub fn escape_html(input: &str) -> String {
 
 pub fn escape_markdown_table_cell(input: &str) -> String {
     input
-        .replace('|', "\\|")
+        .replace('|', "\|")
         .replace('\n', " ")
         .replace('\r', "")
 }
@@ -104,6 +169,24 @@ pub fn serialize_json(
         schema_version: REPORT_SCHEMA_VERSION,
         results,
         metadata,
+        by_operator: None,
+        by_file: None,
+        by_function: None,
+    };
+    serde_json::to_string_pretty(&report).map_err(|e| format!("JSON serialization error: {e}"))
+}
+
+pub fn serialize_json_with_breakdowns(
+    results: &[ReportResult],
+    metadata: Option<&ReportMetadata>,
+) -> Result<String, String> {
+    let report = JsonTestReport {
+        schema_version: REPORT_SCHEMA_VERSION,
+        results,
+        metadata,
+        by_operator: Some(summary_by_operator(results)),
+        by_file: Some(summary_by_file(results)),
+        by_function: Some(summary_by_function(results)),
     };
     serde_json::to_string_pretty(&report).map_err(|e| format!("JSON serialization error: {e}"))
 }
@@ -252,6 +335,7 @@ pub fn serialize_html(results: &[ReportResult]) -> Result<String, String> {
 
 pub fn fuzz_serialize_all_reports(results: &[ReportResult]) {
     let _ = serialize_json(results, None);
+    let _ = serialize_json_with_breakdowns(results, None);
     let _ = serialize_markdown(results);
     let _ = serialize_html(results);
 }
