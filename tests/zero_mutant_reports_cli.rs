@@ -10,7 +10,7 @@ fn run(args: &[&str]) -> std::process::Output {
 #[test]
 fn zero_mutant_reports_across_all_formats() {
     let target = "fixtures/weak-auth";
-    let non_matching_op = "NONEXISTENT-OPERATOR";
+    let non_matching_op = "TOKEN-004"; // valid operator with no candidates in weak-auth
 
     // 1. Text mode
     let text_out = run(&["test", target, "--operator", non_matching_op]);
@@ -69,7 +69,7 @@ fn zero_mutant_reports_across_all_formats() {
 #[test]
 fn zero_mutant_list_reports() {
     let target = "fixtures/weak-auth";
-    let non_matching_op = "NONEXISTENT-OPERATOR";
+    let non_matching_op = "TOKEN-004";
 
     let text_out = run(&["list", target, "--operator", non_matching_op]);
     assert!(text_out.status.success());
