@@ -13,9 +13,7 @@ fn discover() -> std::process::Output {
 
 #[test]
 fn concurrent_discovery_does_not_share_mutable_state() {
-    let workers: Vec<_> = (0..4)
-        .map(|_| std::thread::spawn(discover))
-        .collect();
+    let workers: Vec<_> = (0..4).map(|_| std::thread::spawn(discover)).collect();
     let outputs: Vec<_> = workers
         .into_iter()
         .map(|worker| worker.join().expect("discovery worker panicked"))
@@ -27,7 +25,10 @@ fn concurrent_discovery_does_not_share_mutable_state() {
         String::from_utf8_lossy(&first.stderr)
     );
     let parsed: Value = serde_json::from_slice(&first.stdout).expect("valid discovery JSON");
-    assert!(!parsed.is_null(), "discovery should produce structured JSON");
+    assert!(
+        !parsed.is_null(),
+        "discovery should produce structured JSON"
+    );
     for output in outputs.iter().skip(1) {
         assert!(
             output.status.success(),
