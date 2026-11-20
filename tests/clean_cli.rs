@@ -2,8 +2,11 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::{Command, Output},
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct TempDir(PathBuf);
 
@@ -13,8 +16,11 @@ impl TempDir {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("soro-mutants-clean-{}-{nonce}", std::process::id()));
+        let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let path = std::env::temp_dir().join(format!(
+            "soro-mutants-clean-{}-{nonce}-{sequence}",
+            std::process::id()
+        ));
         fs::create_dir_all(&path).unwrap();
         Self(path)
     }
@@ -45,7 +51,12 @@ fn stdout(output: &Output) -> String {
         "clean failed: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    String::from_utf8(output.stdout.clone()).unwrap()
+    let text = String::from_utf8(output.stdout.clone()).unwrap();
+    if cfg!(target_os = "macos") {
+        text.replace("/private/var/", "/var/")
+    } else {
+        text
+    }
 }
 
 #[test]
