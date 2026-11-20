@@ -435,7 +435,7 @@ fn summary_by_operator(results: &[MutantResult]) -> BTreeMap<String, OutcomeCoun
         summary
             .entry(result.mutant.operator.clone())
             .or_default()
-            .record(result.outcome);
+            .record(result.outcome.clone());
     }
     summary
 }
@@ -446,7 +446,7 @@ fn summary_by_file(results: &[MutantResult]) -> BTreeMap<String, OutcomeCounts> 
         summary
             .entry(result.mutant.file.to_string_lossy().replace('\\', "/"))
             .or_default()
-            .record(result.outcome);
+            .record(result.outcome.clone());
     }
     summary
 }
@@ -458,7 +458,7 @@ fn summary_by_function(results: &[MutantResult]) -> BTreeMap<String, OutcomeCoun
             summary
                 .entry(function.clone())
                 .or_default()
-                .record(result.outcome);
+                .record(result.outcome.clone());
         }
     }
     summary
