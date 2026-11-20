@@ -24,9 +24,9 @@ reported as structured data, not panics.
 ## Rust and Cargo versions
 
 - **MSRV:** Rust `1.85.0` (`rust-version = "1.85"` in `Cargo.toml`).
-- **Supported Rust:** any stable Rust `>= 1.85.0`. The release CI verifies the
-  MSRV and a current stable toolchain (the semantic fixture matrix pins
-  `1.91.0`).
+- **Supported Rust:** any stable Rust `>= 1.85.0`. The dedicated `.github/workflows/msrv.yml` workflow verifies
+  Rust `1.85.0` and the current stable toolchain on every pull request and main push.
+  The semantic fixture matrix separately pins `1.91.0`.
 - **Cargo:** Cargo `>= 1.85.0`, installed from the same toolchain as `rustc`.
   Cargo lockfile version 4 and `--locked` builds are assumed.
 - **Compatibility assumption:** `rustc` and `cargo` are taken from one
@@ -76,6 +76,21 @@ v1.0 release blocker unless it reproduces on a primary environment.
   trusted pinned revision. It is never part of normal unit CI.
 - Persistent result caches are local to a `--target-dir`; there is no remote or
   cross-repository cache reuse.
+
+## Automated MSRV regression gate
+
+The `Minimum supported Rust version` workflow runs independently of the semantic fixture matrix. Both toolchain jobs print `rustc` and `cargo` versions, compile all targets and features using the committed lockfile, run `check_platform_cli` regression tests, and execute `check-platform --json`. A dependency that silently raises the Rust requirement therefore fails the 1.85.0 job rather than being hidden by a newer toolchain. Jobs have a 15-minute limit. The workflow is also manually dispatchable.
+
+To reproduce locally:
+
+```bash
+rustup toolchain install 1.85.0
+cargo +1.85.0 check --locked --all-targets --all-features
+cargo +1.85.0 test --locked --test check_platform_cli
+cargo +1.85.0 run --locked -- check-platform --json
+```
+
+A failure at `cargo check --locked` may indicate a dependency has increased its Rust requirement; inspect `Cargo.lock` and the dependency's declared `rust-version` before changing the project's MSRV. The platform check requires `bash` and `git` on the host.
 
 ## Verification commands
 
