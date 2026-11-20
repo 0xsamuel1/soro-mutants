@@ -6268,9 +6268,13 @@ mod tests {
             let report = serde_json::to_value(test_report(&results)).unwrap();
             let example: serde_json::Value =
                 serde_json::from_str(include_str!("../docs/json-report-example.json")).unwrap();
-            let mut expected = example;
-            expected["results"][0]["outcome"] = label.into();
-            assert_eq!(report, expected);
+            let mut expected_results = example["results"].clone();
+            expected_results[0]["outcome"] = label.into();
+            assert_eq!(report["schema_version"], example["schema_version"]);
+            assert_eq!(report["results"], expected_results);
+            assert_eq!(report["by_operator"]["AUTH-001"]["generated"], 1);
+            assert_eq!(report["by_file"]["src/lib.rs"]["generated"], 1);
+            assert_eq!(report["by_function"]["guarded"]["generated"], 1);
         }
     }
 
@@ -6282,7 +6286,13 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(test_report(&[])).unwrap(),
-            serde_json::json!({"schema_version": 1, "results": []})
+            serde_json::json!({
+                "schema_version": 1,
+                "results": [],
+                "by_operator": {},
+                "by_file": {},
+                "by_function": {}
+            })
         );
     }
 
