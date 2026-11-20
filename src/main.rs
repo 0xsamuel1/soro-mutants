@@ -444,7 +444,7 @@ fn summary_by_file(results: &[MutantResult]) -> BTreeMap<String, OutcomeCounts> 
     let mut summary = BTreeMap::new();
     for result in results {
         summary
-            .entry(result.mutant.file.display().to_string())
+            .entry(result.mutant.file.to_string_lossy().replace('\\', "/"))
             .or_default()
             .record(result.outcome);
     }
