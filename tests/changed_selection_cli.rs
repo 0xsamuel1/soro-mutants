@@ -3,8 +3,11 @@ use std::{
     fs,
     path::PathBuf,
     process::{Command, Output},
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct GitProject(PathBuf);
 impl GitProject {
@@ -13,8 +16,11 @@ impl GitProject {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root =
-            std::env::temp_dir().join(format!("soro-changed-{}-{nonce}", std::process::id()));
+        let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "soro-changed-{}-{nonce}-{sequence}",
+            std::process::id()
+        ));
         fs::create_dir_all(&root).unwrap();
         let project = Self(root);
         project.git(&["init", "-q"]);
