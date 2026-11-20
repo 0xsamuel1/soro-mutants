@@ -22,7 +22,10 @@ fn test_json_schema_v1_contract_and_forward_compatibility() {
     // Verify fields of results
     for res in report["results"].as_array().unwrap() {
         let outcome = res["outcome"].as_str().unwrap();
-        assert!(matches!(outcome, "KILLED" | "SURVIVED" | "UNVIABLE" | "TIMEOUT"));
+        assert!(matches!(
+            outcome,
+            "KILLED" | "SURVIVED" | "UNVIABLE" | "TIMEOUT"
+        ));
         let mutant = &res["mutant"];
         assert!(mutant["id"].is_string());
         assert!(mutant["operator"].is_string());
