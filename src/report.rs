@@ -104,9 +104,7 @@ pub fn summary_by_function(results: &[ReportResult]) -> BTreeMap<String, Outcome
     let mut map = BTreeMap::new();
     for r in results {
         if let Some(ref func) = r.mutant.function {
-            map.entry(func.clone())
-                .or_default()
-                .record(r.outcome);
+            map.entry(func.clone()).or_default().record(r.outcome);
         }
     }
     map
