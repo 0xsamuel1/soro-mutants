@@ -39,10 +39,23 @@ fn empty_list_and_test_json_use_versioned_envelopes() {
         let output = run(command, &["--operator", "TOKEN-001", "--json"]);
         assert!(output.status.success());
         let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
-        assert_eq!(
-            report.as_object().unwrap().len(),
-            if command == "test" { 3 } else { 2 }
-        );
+        if command == "list" {
+            assert_eq!(report.as_object().unwrap().len(), 2);
+        } else {
+            for field in [
+                "schema_version",
+                "results",
+                "metadata",
+                "by_operator",
+                "by_file",
+                "by_function",
+            ] {
+                assert!(
+                    report.get(field).is_some(),
+                    "test report must include {field}"
+                );
+            }
+        }
         assert_eq!(report["schema_version"], 1);
         assert_eq!(report[field], serde_json::json!([]));
         if command == "test" {
