@@ -1,6 +1,16 @@
-use std::{fs, process::Command};
+use std::{
+    fs,
+    process::Command,
+    sync::{Mutex, OnceLock},
+};
 
 fn cli(args: &[&str]) -> std::process::Output {
+    static COMMAND_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    let _guard = COMMAND_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .expect("exit-code CLI lock");
+
     Command::new(env!("CARGO_BIN_EXE_cargo-soro-mutants"))
         .args(args)
         .output()
