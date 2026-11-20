@@ -91,7 +91,6 @@ fn test_per_operator_and_per_file_summary_counts() {
     assert_eq!(parsed["by_file"]["src/admin.rs"]["generated"], 2);
 }
 
-
 #[test]
 fn cli_json_includes_operator_and_file_breakdowns() {
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_cargo-soro-mutants"))
@@ -116,6 +115,8 @@ fn cli_json_includes_operator_and_file_breakdowns() {
     let operator = &report["by_operator"]["AUTH-001"];
     assert!(operator["generated"].as_u64().unwrap_or(0) > 0);
     assert_eq!(operator["survived"], operator["generated"]);
-    assert!(report["by_file"].as_object().is_some_and(|map| !map.is_empty()));
+    assert!(report["by_file"]
+        .as_object()
+        .is_some_and(|map| !map.is_empty()));
     assert!(report["by_function"].is_object());
 }
