@@ -12,7 +12,10 @@ fn test_per_operator_and_per_file_summary_counts() {
                 operator: "AUTH-001".into(),
                 file: "src/admin.rs".into(),
                 function: Some("check".into()),
-                span: ReportSpan { line: 10, column: 5 },
+                span: ReportSpan {
+                    line: 10,
+                    column: 5,
+                },
                 original: "orig".into(),
                 replacement: "repl".into(),
                 description: "desc".into(),
@@ -25,7 +28,10 @@ fn test_per_operator_and_per_file_summary_counts() {
                 operator: "AUTH-001".into(),
                 file: "src/admin.rs".into(),
                 function: Some("check".into()),
-                span: ReportSpan { line: 12, column: 5 },
+                span: ReportSpan {
+                    line: 12,
+                    column: 5,
+                },
                 original: "orig".into(),
                 replacement: "repl".into(),
                 description: "desc".into(),
@@ -38,7 +44,10 @@ fn test_per_operator_and_per_file_summary_counts() {
                 operator: "TOKEN-001".into(),
                 file: "src/token.rs".into(),
                 function: Some("transfer".into()),
-                span: ReportSpan { line: 20, column: 5 },
+                span: ReportSpan {
+                    line: 20,
+                    column: 5,
+                },
                 original: "orig".into(),
                 replacement: "repl".into(),
                 description: "desc".into(),
@@ -80,4 +89,33 @@ fn test_per_operator_and_per_file_summary_counts() {
     assert_eq!(parsed["by_operator"]["AUTH-001"]["killed"], 1);
     assert_eq!(parsed["by_operator"]["AUTH-001"]["survived"], 1);
     assert_eq!(parsed["by_file"]["src/admin.rs"]["generated"], 2);
+}
+
+
+#[test]
+fn cli_json_includes_operator_and_file_breakdowns() {
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_cargo-soro-mutants"))
+        .args([
+            "test",
+            "fixtures/weak-auth",
+            "--operator",
+            "AUTH-001",
+            "--test-command",
+            "true",
+            "--json",
+        ])
+        .output()
+        .expect("CLI should run");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value =
+        serde_json::from_slice(&output.stdout).expect("valid JSON report");
+    let operator = &report["by_operator"]["AUTH-001"];
+    assert!(operator["generated"].as_u64().unwrap_or(0) > 0);
+    assert_eq!(operator["survived"], operator["generated"]);
+    assert!(report["by_file"].as_object().is_some_and(|map| !map.is_empty()));
+    assert!(report["by_function"].is_object());
 }
