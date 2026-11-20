@@ -93,8 +93,10 @@ fn zero_mutant_list_reports() {
 
     let text_out = run(&["list", target, "--operator", non_matching_op]);
     assert!(text_out.status.success());
-    assert!(String::from_utf8_lossy(&text_out.stdout)
-        .contains("No matching Soroban semantic mutants found."));
+    assert!(
+        text_out.stdout.is_empty(),
+        "zero-mutant text list output should contain no mutant lines"
+    );
 
     let json_out = run(&["list", target, "--operator", non_matching_op, "--json"]);
     assert!(json_out.status.success());
