@@ -9,8 +9,7 @@ fn unique_project() -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    let root =
-        std::env::temp_dir().join(format!("soro-path-test-{}-{nonce}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("soro-path-test-{}-{nonce}", std::process::id()));
     fs::create_dir_all(root.join("src/custom_sub")).unwrap();
     root
 }
@@ -45,7 +44,9 @@ pub fn check_authority(admin: Address) {
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     let mutants = report["mutants"].as_array().unwrap();
     assert!(
-        mutants.iter().any(|m| m["file"].as_str().unwrap().contains("auth_impl.rs")),
+        mutants
+            .iter()
+            .any(|m| m["file"].as_str().unwrap().contains("auth_impl.rs")),
         "mutant in #[path] module file must be recognized"
     );
 
