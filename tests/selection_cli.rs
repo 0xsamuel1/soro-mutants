@@ -4,8 +4,11 @@ use std::{
     fs,
     path::PathBuf,
     process::{Command, Output},
+    sync::atomic::{AtomicU64, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
+
+static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 struct Project(PathBuf);
 
@@ -15,8 +18,11 @@ impl Project {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let root =
-            std::env::temp_dir().join(format!("soro-selection-{}-{nonce}", std::process::id()));
+        let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+        let root = std::env::temp_dir().join(format!(
+            "soro-selection-{}-{nonce}-{sequence}",
+            std::process::id()
+        ));
         let project = Self(root);
         // Deliberately create files out of lexical order, with multiple functions/operators.
         for file in [
