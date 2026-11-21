@@ -6,7 +6,7 @@ impl Fixture {
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let root = std::env::temp_dir().join(format!("soro-runner-cleanup-{}-{nonce}", std::process::id()));
         fs::create_dir_all(root.join("src")).unwrap();
-        fs::write(root.join("src/lib.rs"), "fn check(user: Address) { user.require_auth(); }\\n").unwrap();
+        fs::write(root.join("src/lib.rs"), "fn check(user: Address) { user.require_auth(); }\n").unwrap();
         fs::write(root.join("source-sentinel"), "unchanged").unwrap();
         Self(root)
     }
@@ -24,7 +24,7 @@ fn run(root: &Path, test_command: &str) -> std::process::Output {
 fn verify_cleanup(root: &Path) {
     assert!(!root.join(".soro-mutants-worktree").exists(), "scratch worktree must be removed");
     assert_eq!(fs::read_to_string(root.join("source-sentinel")).unwrap(), "unchanged");
-    assert_eq!(fs::read_to_string(root.join("src/lib.rs")).unwrap(), "fn check(user: Address) { user.require_auth(); }\\n");
+    assert_eq!(fs::read_to_string(root.join("src/lib.rs")).unwrap(), "fn check(user: Address) { user.require_auth(); }\n");
 }
 
 #[test]
