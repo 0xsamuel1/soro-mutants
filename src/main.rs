@@ -381,7 +381,7 @@ fn normalized_report_path(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
 }
 
-fn serialize_portable_path<S>(path: &PathBuf, serializer: S) -> std::result::Result<S::Ok, S::Error>
+fn serialize_portable_path<S>(path: &Path, serializer: S) -> std::result::Result<S::Ok, S::Error>
 where
     S: serde::Serializer,
 {
