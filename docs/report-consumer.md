@@ -20,7 +20,7 @@ array.
 
 | Report | Fields |
 | --- | --- |
-| List | `schema_version`, `mutants` |
+| List | `schema_version`, `mutants`; additive `metadata` is present when `--operator` or `--function` is selected |
 | Test | `schema_version`, `results`; each result has `mutant` and `outcome` |
 | Test run metadata | `metadata` contains nullable `rustc_version` and `cargo_version`, the configured `test_command`, effective `compile_timeout_seconds` and `test_timeout_seconds`, and nullable `operator_filter` and `function_filter` selections |
 | Suppression summary | Optional `suppression` with `count` and `details` when suppressions were recorded |
