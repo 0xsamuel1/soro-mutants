@@ -4,7 +4,7 @@ Both `list --json` and `test --json` emit an object with the integer
 `schema_version`, currently `1`. This version describes the JSON contract and is
 independent of the package version. Text output is unchanged.
 
-`list` returns `{"schema_version": 1, "mutants": [...]}`. Each mutant retains
+`list` returns `{"schema_version": 1, "mutants": [...]}` and, when `--operator` or `--function` is active, an additive `metadata` object containing the selected filters. Each mutant retains
 `id`, `operator`, `file`, `function` (a string or null), `span` (`line`, `column`,
 `end_line`, `end_column`), `original`, `replacement`, and `description`.
 Internal byte offsets are not serialized.
@@ -59,8 +59,8 @@ To enable robust client-side deserialization, the following field guarantees app
 | `metadata.test_command` | `metadata` | Required | String | Configured test command after environment-secret redaction. Never `null`. |
 | `metadata.compile_timeout_seconds` | `metadata` | Required | Integer | Non-negative effective compilation timeout in seconds. Never `null`. |
 | `metadata.test_timeout_seconds` | `metadata` | Required | Integer | Non-negative effective test execution timeout in seconds. Never `null`. |
-| `metadata.operator_filter` | `metadata` | Required | String or `null` | Active `--operator` filter, or `null` when unset. |
-| `metadata.function_filter` | `metadata` | Required | String or `null` | Active `--function` filter, or `null` when unset. |
+| `metadata.operator_filter` | `metadata` | Required for test; conditional for list | String or `null` | Active `--operator` filter, or `null` when unset. |
+| `metadata.function_filter` | `metadata` | Required for test; conditional for list | String or `null` | Active `--function` filter, or `null` when unset. |
 | `suppression` | `test --json` root | Optional | Object | Omitted / absent when no mutants are suppressed. Contains `count` (integer) and `details` (array) when present. |
 | `mutant.id` | Mutant object | Required | String | Non-empty deterministic identifier (e.g. `"M0001"`). Never `null`. |
 | `mutant.operator` | Mutant object | Required | String | Non-empty operator code (e.g. `"AUTH-001"`). Never `null`. |
