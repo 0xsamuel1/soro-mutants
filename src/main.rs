@@ -1,3 +1,4 @@
+mod diagnostics;
 mod redaction;
 
 use anyhow::{bail, Context, Result};
@@ -258,6 +259,9 @@ enum Commands {
         /// Write the selected text, JSON, or Markdown report to a file.
         #[arg(long)]
         output: Option<PathBuf>,
+        /// Suppress per-mutant progress and baseline lines in text output; the final summary is still printed.
+        #[arg(long)]
+        no_progress: bool,
         /// Resume an interrupted mutation run from the local progress file.
         #[arg(long)]
         resume: bool,
@@ -878,27 +882,27 @@ fn load_result_cache(path: &Path, expected: &ResultCacheIdentity) -> Result<Pers
     let cache: PersistentResultCache = match serde_json::from_str(&content) {
         Ok(cache) => cache,
         Err(_) => {
-            eprintln!(
+            diagnostics::warning(&format!(
                 "result cache miss: ignoring malformed cache at {}",
                 path.display()
-            );
+            ));
             return Ok(PersistentResultCache::empty(expected.clone()));
         }
     };
     if cache.version != RESULT_CACHE_VERSION {
-        eprintln!(
+        diagnostics::warning(&format!(
             "result cache miss: unsupported cache version {} at {}",
             cache.version,
             path.display()
-        );
+        ));
         return Ok(PersistentResultCache::empty(expected.clone()));
     }
     if cache.identity != *expected {
-        eprintln!("result cache miss: cache identity does not match the current run");
+        diagnostics::warning("result cache miss: cache identity does not match the current run");
         return Ok(PersistentResultCache::empty(expected.clone()));
     }
     if cache.entries_hash != PersistentResultCache::hash_entries(&cache.entries) {
-        eprintln!("result cache miss: stored outcomes failed their integrity check");
+        diagnostics::warning("result cache miss: stored outcomes failed their integrity check");
         return Ok(PersistentResultCache::empty(expected.clone()));
     }
     Ok(cache)
@@ -2307,14 +2311,91 @@ fn ensure_min_score(results: &[MutantResult], minimum: Option<f64>) -> Result<()
     Ok(())
 }
 
+/// The active selection options, rendered for empty-selection diagnostics.
+struct SelectionFilters<'a> {
+    package: &'a [String],
+    operator: Option<&'a str>,
+    exclude_globs: Vec<String>,
+    shard: Option<Shard>,
+    file: Option<&'a str>,
+    function: Option<&'a str>,
+    changed_file: &'a [PathBuf],
+    diff_base: Option<&'a str>,
+    changed_functions: bool,
+}
+
+impl SelectionFilters<'_> {
+    fn discovery_filters(&self) -> Vec<String> {
+        let mut filters = Vec::new();
+        filters.extend(self.package.iter().map(|name| format!("--package {name}")));
+        if let Some(operator) = self.operator {
+            filters.push(format!("--operator {operator}"));
+        }
+        if let Some(file) = self.file {
+            filters.push(format!("--file {file}"));
+        }
+        if let Some(function) = self.function {
+            filters.push(format!("--function {function}"));
+        }
+        filters.extend(
+            self.exclude_globs
+                .iter()
+                .map(|glob| format!("--exclude-path {glob}")),
+        );
+        filters
+    }
+
+    fn changed_filters(&self) -> Vec<String> {
+        let mut filters = Vec::new();
+        filters.extend(
+            self.changed_file
+                .iter()
+                .map(|path| format!("--changed-file {}", path.display())),
+        );
+        if let Some(base) = self.diff_base {
+            filters.push(format!("--diff-base {base}"));
+        }
+        if self.changed_functions {
+            filters.push("--changed-functions".to_owned());
+        }
+        filters
+    }
+
+    fn empty_selection(
+        &self,
+        root: &Path,
+        stats: DiscoveryStats,
+        after_discovery: usize,
+        after_changed: usize,
+    ) -> diagnostics::EmptySelection {
+        let discovery_filters = self.discovery_filters();
+        let changed_filters = self.changed_filters();
+        let shard = self
+            .shard
+            .map(|value| format!("--shard {}/{}", value.index, value.total));
+        let mut filters = discovery_filters.clone();
+        filters.extend(changed_filters.iter().cloned());
+        filters.extend(shard.iter().cloned());
+        diagnostics::EmptySelection {
+            root: root.to_path_buf(),
+            filters,
+            discovery_filters,
+            changed_filters,
+            shard,
+            files_scanned: stats.files_scanned,
+            unparsable_files: stats.unparsable_files,
+            candidates: stats.candidates,
+            after_discovery,
+            after_changed,
+        }
+    }
+}
+
 fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!(
-                "Error: {}",
-                redact_environment_secrets(&format!("{error:#}"))
-            );
+            diagnostics::fatal(&error);
             if error.downcast_ref::<BaselineFailure>().is_some() {
                 std::process::ExitCode::from(3)
             } else if error.downcast_ref::<ScoreThresholdFailure>().is_some() {
@@ -2355,7 +2436,25 @@ fn run() -> Result<()> {
                 .canonicalize()
                 .with_context(|| format!("cannot resolve {}", path.display()))?;
             let package_dirs = resolve_package_filter(&root, &package)?;
-            let (mutants, suppressed) = discover_mutants_with_suppressions(
+            let selection_filters = SelectionFilters {
+                package: &package,
+                operator: operator.as_deref(),
+                exclude_globs: exclude_path
+                    .iter()
+                    .map(|glob| glob.glob().to_string())
+                    .collect(),
+                shard,
+                file: file.as_deref(),
+                function: function.as_deref(),
+                changed_file: &changed_file,
+                diff_base: diff_base.as_deref(),
+                changed_functions,
+            };
+            let Discovery {
+                mutants,
+                suppressed,
+                stats,
+            } = discover_mutants_detailed(
                 &root,
                 package_dirs.as_deref(),
                 operator.as_deref(),
@@ -2363,6 +2462,7 @@ fn run() -> Result<()> {
                 function.as_deref(),
                 &exclusion_set(exclude_path)?,
             )?;
+            let after_discovery = mutants.len();
             let mutants = filter_changed_mutants(
                 &root,
                 mutants,
@@ -2370,7 +2470,16 @@ fn run() -> Result<()> {
                 diff_base.as_deref(),
                 changed_functions,
             )?;
+            let after_changed = mutants.len();
             let mutants = select_shard(mutants, shard);
+            if mutants.is_empty() {
+                diagnostics::report_empty_selection(&selection_filters.empty_selection(
+                    &root,
+                    stats,
+                    after_discovery,
+                    after_changed,
+                ));
+            }
             let mut report = report_writer(output.as_deref())?;
             if count_only {
                 writeln!(report, "{}", mutants.len())?;
@@ -2418,6 +2527,7 @@ fn run() -> Result<()> {
             github_summary,
             min_score,
             output,
+            no_progress,
             resume,
             progress_file,
             cache,
@@ -2456,7 +2566,22 @@ fn run() -> Result<()> {
                 .iter()
                 .map(|glob| glob.glob().to_string())
                 .collect::<Vec<_>>();
-            let (mutants, suppressed) = discover_mutants_with_suppressions(
+            let selection_filters = SelectionFilters {
+                package: &package,
+                operator: operator.as_deref(),
+                exclude_globs: exclude_globs.clone(),
+                shard,
+                file: file.as_deref(),
+                function: function.as_deref(),
+                changed_file: &changed_file,
+                diff_base: diff_base.as_deref(),
+                changed_functions,
+            };
+            let Discovery {
+                mutants,
+                suppressed,
+                stats,
+            } = discover_mutants_detailed(
                 &root,
                 package_dirs.as_deref(),
                 operator.as_deref(),
@@ -2464,6 +2589,7 @@ fn run() -> Result<()> {
                 function.as_deref(),
                 &exclusion_set(exclude_path)?,
             )?;
+            let after_discovery = mutants.len();
             let mutants = filter_changed_mutants(
                 &root,
                 mutants,
@@ -2471,7 +2597,16 @@ fn run() -> Result<()> {
                 diff_base.as_deref(),
                 changed_functions,
             )?;
+            let after_changed = mutants.len();
             let mutants = select_shard(mutants, shard);
+            if mutants.is_empty() {
+                diagnostics::report_empty_selection(&selection_filters.empty_selection(
+                    &root,
+                    stats,
+                    after_discovery,
+                    after_changed,
+                ));
+            }
             if !mutants.is_empty() && runner == Runner::Nextest {
                 ensure_nextest_available()?;
             }
@@ -2580,21 +2715,21 @@ fn run() -> Result<()> {
                 fs::remove_file(&cache_file).with_context(|| {
                     format!("cannot clear result cache at {}", cache_file.display())
                 })?;
-                eprintln!(
+                diagnostics::note(&format!(
                     "cleared persistent result cache at {}",
                     cache_file.display()
-                );
+                ));
             }
             let cache_enabled = cache && !no_cache;
             let mut result_cache = if cache_enabled {
-                eprintln!(
+                diagnostics::note(&format!(
                     "persistent result cache enabled at {}",
                     cache_file.display()
-                );
+                ));
                 load_result_cache(&cache_file, &result_identity)?
             } else {
                 if no_cache {
-                    eprintln!("persistent result cache disabled");
+                    diagnostics::note("persistent result cache disabled");
                 }
                 PersistentResultCache::empty(result_identity.clone())
             };
@@ -2605,7 +2740,8 @@ fn run() -> Result<()> {
                 .as_deref()
                 .map(|dir| root.join(dir))
                 .unwrap_or_else(|| root.clone());
-            if !json && !markdown && !html && !sarif {
+            let text_progress = !json && !markdown && !html && !sarif && !no_progress;
+            if text_progress {
                 writeln!(
                     report,
                     "Baseline: {}",
@@ -2619,7 +2755,7 @@ fn run() -> Result<()> {
                 &baseline_target_dir,
             )? {
                 ProcessResult::Passed => {
-                    if !json && !markdown && !html && !sarif {
+                    if text_progress {
                         writeln!(report, "Baseline PASS\n")?;
                     }
                 }
@@ -2634,7 +2770,6 @@ fn run() -> Result<()> {
                 }
             }
 
-            let text_progress = !json && !markdown && !html && !sarif;
             let mut outcome_slots: Vec<Option<Outcome>> = vec![None; mutants.len()];
             let mut pending_mutants = Vec::new();
             let mut pending_indices = Vec::new();
@@ -2739,10 +2874,10 @@ fn run() -> Result<()> {
             if cache_enabled {
                 result_cache.identity = result_identity;
                 save_result_cache(&cache_file, &mut result_cache)?;
-                eprintln!(
+                diagnostics::note(&format!(
                     "result cache: {cache_hits} hit(s), {cache_misses} miss(es), {} stored",
                     result_cache.entries.len()
-                );
+                ));
             }
 
             if json {
@@ -2843,7 +2978,9 @@ fn run() -> Result<()> {
                 print_platform_report(&mut io::stdout(), &report)?;
             }
             if report.status == "unsupported" {
-                bail!("{}", report.summary);
+                bail!(
+                    "unsupported platform; run `check-platform --json` for per-check remediation"
+                );
             }
         }
         Commands::Operators => {
@@ -3667,10 +3804,10 @@ fn run_benchmark_matrix(
         targets: summaries,
     };
     if !failures.is_empty() {
-        eprintln!(
+        diagnostics::warning(&format!(
             "benchmark baseline/execution failures: {}",
             failures.join("; ")
-        );
+        ));
     }
     Ok(summary)
 }
@@ -4108,7 +4245,7 @@ fn filter_changed_mutants(
             .output()
             .context("cannot locate Git repository")?;
         if !output.status.success() {
-            bail!("Git repository metadata is unavailable for --diff-base");
+            bail!("cannot read Git repository metadata for --diff-base");
         }
         let top = PathBuf::from(String::from_utf8(output.stdout)?.trim()).canonicalize()?;
         let diff = Command::new("git")
@@ -4481,6 +4618,43 @@ fn discover_mutants_with_suppressions(
     function_filter: Option<&str>,
     exclusions: &GlobSet,
 ) -> Result<(Vec<Mutant>, Vec<SuppressedMutant>)> {
+    let discovery = discover_mutants_detailed(
+        root,
+        package_dirs,
+        operator,
+        file_filter,
+        function_filter,
+        exclusions,
+    )?;
+    Ok((discovery.mutants, discovery.suppressed))
+}
+
+/// Discovery output plus the facts needed to explain an empty selection.
+struct Discovery {
+    mutants: Vec<Mutant>,
+    suppressed: Vec<SuppressedMutant>,
+    stats: DiscoveryStats,
+}
+
+#[derive(Default)]
+struct DiscoveryStats {
+    /// Rust source files that were read and parsed successfully.
+    files_scanned: usize,
+    /// Project-relative Rust source files skipped because they failed to parse.
+    unparsable_files: Vec<PathBuf>,
+    /// Mutants found before operator/file/function filters and suppression.
+    candidates: usize,
+}
+
+fn discover_mutants_detailed(
+    root: &Path,
+    package_dirs: Option<&[PathBuf]>,
+    operator: Option<&str>,
+    file_filter: Option<&str>,
+    function_filter: Option<&str>,
+    exclusions: &GlobSet,
+) -> Result<Discovery> {
+    let mut stats = DiscoveryStats::default();
     let root = root
         .canonicalize()
         .with_context(|| format!("cannot resolve {}", root.display()))?;
@@ -4519,21 +4693,26 @@ fn discover_mutants_with_suppressions(
 
         let source = read_rust_source(entry.path())?;
         validate_source_nesting(&source, entry.path())?;
-        let syntax = match syn::parse_file(&source) {
-            Ok(file) => file,
-            Err(_) => continue,
-        };
         let relative = entry
             .path()
             .strip_prefix(&root)
             .unwrap_or(entry.path())
             .to_path_buf();
+        let syntax = match syn::parse_file(&source) {
+            Ok(file) => file,
+            Err(_) => {
+                stats.unparsable_files.push(relative);
+                continue;
+            }
+        };
+        stats.files_scanned += 1;
 
         let mut visitor = SemanticVisitor::new(&source, relative);
         visitor.visit_file(&syntax);
         mutants.extend(visitor.mutants);
     }
 
+    stats.candidates = mutants.len();
     if let Some(operator) = operator {
         mutants.retain(|m| m.operator == operator);
     }
@@ -4574,7 +4753,12 @@ fn discover_mutants_with_suppressions(
         mutant.id = format!("M{:04}", index + 1);
     }
 
-    Ok((mutants, suppressed))
+    stats.unparsable_files.sort();
+    Ok(Discovery {
+        mutants,
+        suppressed,
+        stats,
+    })
 }
 
 /// Names bound anywhere in a function body (let, closure, match and loop
