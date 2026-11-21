@@ -483,6 +483,8 @@ struct ListReport<'a> {
     schema_version: u32,
     mutants: &'a [Mutant],
     #[serde(skip_serializing_if = "Option::is_none")]
+    metadata: Option<SelectionMetadata>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     suppression: Option<SuppressionSummary<'a>>,
 }
 
@@ -503,6 +505,24 @@ struct TestReport<'a> {
     by_operator: BTreeMap<String, OutcomeCounts>,
     by_file: BTreeMap<String, OutcomeCounts>,
     by_function: BTreeMap<String, OutcomeCounts>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct SelectionMetadata {
+    operator_filter: Option<String>,
+    function_filter: Option<String>,
+}
+
+impl SelectionMetadata {
+    fn capture(operator_filter: Option<&str>, function_filter: Option<&str>) -> Option<Self> {
+        if operator_filter.is_none() && function_filter.is_none() {
+            return None;
+        }
+        Some(Self {
+            operator_filter: operator_filter.map(str::to_owned),
+            function_filter: function_filter.map(str::to_owned),
+        })
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -1187,10 +1207,11 @@ fn resolve_package_filter(root: &Path, selected: &[String]) -> Result<Option<Vec
     Ok(Some(selected_dirs))
 }
 
-fn list_report(mutants: &[Mutant]) -> ListReport<'_> {
+fn list_report(mutants: &[Mutant], metadata: Option<SelectionMetadata>) -> ListReport<'_> {
     ListReport {
         schema_version: JSON_SCHEMA_VERSION,
         mutants,
+        metadata,
         suppression: None,
     }
 }
@@ -2404,7 +2425,10 @@ fn run() -> Result<()> {
                             count: suppressed.len(),
                             details: &suppressed,
                         }),
-                        ..list_report(&mutants)
+                        ..list_report(
+                            &mutants,
+                            SelectionMetadata::capture(operator.as_deref(), function.as_deref()),
+                        )
                     })?
                 )?;
             } else {
@@ -6455,7 +6479,7 @@ mod tests {
     #[test]
     fn json_list_preserves_mutant_fields() {
         let mutants = [report_mutant()];
-        let report = serde_json::to_value(list_report(&mutants)).unwrap();
+        let report = serde_json::to_value(list_report(&mutants, None)).unwrap();
         assert_eq!(
             report,
             serde_json::json!({
@@ -6471,7 +6495,7 @@ mod tests {
         );
         let mut mutant = report_mutant();
         mutant.function = None;
-        let report = serde_json::to_value(list_report(&[mutant])).unwrap();
+        let report = serde_json::to_value(list_report(&[mutant], None)).unwrap();
         assert!(report["mutants"][0]["function"].is_null());
     }
 
@@ -6523,7 +6547,7 @@ mod tests {
     #[test]
     fn empty_json_reports_are_versioned() {
         assert_eq!(
-            serde_json::to_value(list_report(&[])).unwrap(),
+            serde_json::to_value(list_report(&[], None)).unwrap(),
             serde_json::json!({"schema_version": 1, "mutants": []})
         );
         assert_eq!(
