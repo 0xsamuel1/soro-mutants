@@ -9,7 +9,7 @@ fn run(args: &[&str]) -> std::process::Output {
 
 #[test]
 fn version_contract_is_stable_on_stdout() {
-    let expected = format!("cargo-soro-mutants {}\\n", env!("CARGO_PKG_VERSION"));
+    let expected = format!("cargo-soro-mutants {}\n", env!("CARGO_PKG_VERSION"));
     for args in [&["--version"][..], &["-V"][..]] {
         let output = run(args);
         assert_eq!(output.status.code(), Some(0));
