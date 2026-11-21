@@ -124,7 +124,6 @@ fn test_json_records_active_operator_and_function_filters() {
     assert_eq!(report["metadata"]["function_filter"], "change_admin");
 }
 
-
 #[test]
 fn list_json_records_active_operator_and_function_filters() {
     let output = run(
