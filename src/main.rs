@@ -6241,7 +6241,10 @@ mod tests {
             encode_markdown_link_path("src/space dir/a#b%[c](d)?e&é.rs"),
             "src/space%20dir/a%23b%25%5Bc%5D%28d%29%3Fe%26%C3%A9.rs"
         );
-        assert_eq!(escape_markdown_link_label("src/[x]_y.rs"), "src/\\[x\\]\\_y.rs");
+        assert_eq!(
+            escape_markdown_link_label("src/[x]_y.rs"),
+            "src/\\[x\\]\\_y.rs"
+        );
     }
 
     #[test]
