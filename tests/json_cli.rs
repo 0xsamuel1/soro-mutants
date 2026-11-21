@@ -40,7 +40,9 @@ fn empty_list_and_test_json_use_versioned_envelopes() {
         assert!(output.status.success());
         let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
         if command == "list" {
-            assert_eq!(report.as_object().unwrap().len(), 2);
+            assert_eq!(report.as_object().unwrap().len(), 3);
+            assert_eq!(report["metadata"]["operator_filter"], "TOKEN-001");
+            assert!(report["metadata"]["function_filter"].is_null());
         } else {
             for field in [
                 "schema_version",
