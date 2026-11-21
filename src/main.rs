@@ -377,10 +377,22 @@ struct SourceSpan {
     end_column: usize,
 }
 
+fn normalized_report_path(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
+}
+
+fn serialize_portable_path<S>(path: &PathBuf, serializer: S) -> std::result::Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_str(&normalized_report_path(path))
+}
+
 #[derive(Clone, Debug, Serialize)]
 struct Mutant {
     id: String,
     operator: String,
+    #[serde(serialize_with = "serialize_portable_path")]
     file: PathBuf,
     function: Option<String>,
     span: SourceSpan,
@@ -500,16 +512,25 @@ struct RunMetadata {
     test_command: String,
     compile_timeout_seconds: u64,
     test_timeout_seconds: u64,
+    operator_filter: Option<String>,
+    function_filter: Option<String>,
 }
 
 impl RunMetadata {
-    fn capture(test_command: &str, timeouts: Timeouts) -> Self {
+    fn capture(
+        test_command: &str,
+        timeouts: Timeouts,
+        operator_filter: Option<&str>,
+        function_filter: Option<&str>,
+    ) -> Self {
         Self {
             rustc_version: tool_version("rustc"),
             cargo_version: tool_version("cargo"),
             test_command: redact_environment_secrets(test_command),
             compile_timeout_seconds: timeouts.compile,
             test_timeout_seconds: timeouts.test,
+            operator_filter: operator_filter.map(str::to_owned),
+            function_filter: function_filter.map(str::to_owned),
         }
     }
 }
@@ -2447,7 +2468,12 @@ fn run() -> Result<()> {
                     );
                 }
             }
-            let metadata = RunMetadata::capture(&test_command, timeouts);
+            let metadata = RunMetadata::capture(
+                &test_command,
+                timeouts,
+                operator.as_deref(),
+                function.as_deref(),
+            );
             let root = path
                 .canonicalize()
                 .with_context(|| format!("cannot resolve {}", path.display()))?;
@@ -5969,14 +5995,9 @@ fn print_markdown_report(report: &mut dyn Write, results: &[MutantResult]) -> Re
             .filter(|r| outcome_label(&r.outcome) == label)
         {
             let mutant = &result.mutant;
-            let path = mutant.file.to_string_lossy().replace('\\', "/");
-            let target = path
-                .replace('%', "%25")
-                .replace(' ', "%20")
-                .replace('(', "%28")
-                .replace(')', "%29")
-                .replace('#', "%23");
-            let link_label = path.replace('[', "\\[").replace(']', "\\]");
+            let path = normalized_report_path(&mutant.file);
+            let target = encode_markdown_link_path(&path);
+            let link_label = escape_markdown_link_label(&path);
             let description = mutant
                 .description
                 .replace(['\n', '\r'], " ")
@@ -5996,6 +6017,32 @@ fn print_markdown_report(report: &mut dyn Write, results: &[MutantResult]) -> Re
         writeln!(report)?;
     }
     Ok(())
+}
+
+fn encode_markdown_link_path(path: &str) -> String {
+    let mut encoded = String::with_capacity(path.len());
+    for byte in path.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~' | b'/') {
+            encoded.push(char::from(byte));
+        } else {
+            const HEX: &[u8; 16] = b"0123456789ABCDEF";
+            encoded.push('%');
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+    }
+    encoded
+}
+
+fn escape_markdown_link_label(path: &str) -> String {
+    let mut escaped = String::with_capacity(path.len());
+    for character in path.chars() {
+        if matches!(character, '\\' | '`' | '*' | '_' | '[' | ']' | '!') {
+            escaped.push('\\');
+        }
+        escaped.push(character);
+    }
+    escaped
 }
 
 fn escape_github_annotation_property(value: &str) -> String {
@@ -6146,6 +6193,32 @@ fn outcome_label(outcome: &Outcome) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn machine_report_paths_use_forward_slashes() {
+        #[derive(Serialize)]
+        struct PathReport {
+            #[serde(serialize_with = "serialize_portable_path")]
+            file: PathBuf,
+        }
+
+        let report = PathReport {
+            file: PathBuf::from(r"src\space dir\lib.rs"),
+        };
+        assert_eq!(
+            serde_json::to_string(&report).unwrap(),
+            r#"{"file":"src/space dir/lib.rs"}"#
+        );
+    }
+
+    #[test]
+    fn markdown_link_paths_encode_special_characters() {
+        assert_eq!(
+            encode_markdown_link_path("src/space dir/a#b%[c](d)?e&é.rs"),
+            "src/space%20dir/a%23b%25%5Bc%5D%28d%29%3Fe%26%C3%A9.rs"
+        );
+        assert_eq!(escape_markdown_link_label("src/[x]_y.rs"), "src/\\[x\\]\\_y.rs");
+    }
 
     #[test]
     fn equivalent_suppression_recognizes_no_change_and_repeated_edit() {

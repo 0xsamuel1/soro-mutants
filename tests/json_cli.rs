@@ -90,10 +90,36 @@ fn test_json_records_execution_context_without_host_inventory() {
     assert_eq!(metadata["test_command"], "true");
     assert_eq!(metadata["compile_timeout_seconds"], 15);
     assert_eq!(metadata["test_timeout_seconds"], 20);
+    assert!(metadata["operator_filter"].is_null());
+    assert!(metadata["function_filter"].is_null());
     assert!(metadata["rustc_version"].is_string() || metadata["rustc_version"].is_null());
     assert!(metadata["cargo_version"].is_string() || metadata["cargo_version"].is_null());
     assert!(metadata.get("environment").is_none());
     assert!(metadata.get("hostname").is_none());
     assert!(metadata.get("target_dir").is_none());
     assert_eq!(report["results"][0]["mutant"]["id"], "M0001");
+}
+
+#[test]
+fn test_json_records_active_operator_and_function_filters() {
+    let output = run(
+        "test",
+        &[
+            "--json",
+            "--test-command",
+            "true",
+            "--operator",
+            "AUTH-001",
+            "--function",
+            "change_admin",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["metadata"]["operator_filter"], "AUTH-001");
+    assert_eq!(report["metadata"]["function_filter"], "change_admin");
 }

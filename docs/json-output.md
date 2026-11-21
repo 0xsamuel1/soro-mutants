@@ -15,7 +15,9 @@ Internal byte offsets are not serialized.
 The additional `metadata` object records `rustc_version` and `cargo_version` (strings,
 or null when unavailable), `test_command` (the configured command after environment-secret redaction),
 `compile_timeout_seconds`, and `test_timeout_seconds` (the effective budgets after
-legacy `--timeout` fallback). The metadata is also present for successful runs
+legacy `--timeout` fallback), plus `operator_filter` and `function_filter` (the
+active `--operator` and `--function` values, or null when unset). This makes
+selection settings observable when reproducing a run. The metadata is also present for successful runs
 with no matching mutants. Empty successful reports retain an empty results array.
 Baseline failures still fail the command instead of emitting a successful report.
 
@@ -57,6 +59,8 @@ To enable robust client-side deserialization, the following field guarantees app
 | `metadata.test_command` | `metadata` | Required | String | Configured test command after environment-secret redaction. Never `null`. |
 | `metadata.compile_timeout_seconds` | `metadata` | Required | Integer | Non-negative effective compilation timeout in seconds. Never `null`. |
 | `metadata.test_timeout_seconds` | `metadata` | Required | Integer | Non-negative effective test execution timeout in seconds. Never `null`. |
+| `metadata.operator_filter` | `metadata` | Required | String or `null` | Active `--operator` filter, or `null` when unset. |
+| `metadata.function_filter` | `metadata` | Required | String or `null` | Active `--function` filter, or `null` when unset. |
 | `suppression` | `test --json` root | Optional | Object | Omitted / absent when no mutants are suppressed. Contains `count` (integer) and `details` (array) when present. |
 | `mutant.id` | Mutant object | Required | String | Non-empty deterministic identifier (e.g. `"M0001"`). Never `null`. |
 | `mutant.operator` | Mutant object | Required | String | Non-empty operator code (e.g. `"AUTH-001"`). Never `null`. |
