@@ -123,3 +123,26 @@ fn test_json_records_active_operator_and_function_filters() {
     assert_eq!(report["metadata"]["operator_filter"], "AUTH-001");
     assert_eq!(report["metadata"]["function_filter"], "change_admin");
 }
+
+
+#[test]
+fn list_json_records_active_operator_and_function_filters() {
+    let output = run(
+        "list",
+        &[
+            "--json",
+            "--operator",
+            "AUTH-001",
+            "--function",
+            "change_admin",
+        ],
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["metadata"]["operator_filter"], "AUTH-001");
+    assert_eq!(report["metadata"]["function_filter"], "change_admin");
+}
